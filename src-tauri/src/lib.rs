@@ -4,7 +4,9 @@ mod commands;
 mod icons;
 mod providers;
 mod ranking;
+mod recent;
 mod reminders;
+mod semantic;
 mod timeparse;
 mod window;
 
@@ -20,6 +22,7 @@ pub struct AppState {
     pub icon_dir: std::path::PathBuf,
     pub ai: ai::AiConfig,
     pub reminders: reminders::Reminders,
+    pub semantic: Arc<semantic::Semantic>,
 }
 
 pub fn run() {
@@ -32,6 +35,7 @@ pub fn run() {
             None,
         ))
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             let icon_dir = data_dir.join("icons");
@@ -40,11 +44,14 @@ pub fn run() {
                 usage: ranking::Usage::load(data_dir.clone()),
                 aliases: aliases::Aliases::load(data_dir.clone()),
                 ai: ai::AiConfig::load(data_dir.clone()),
-                reminders: reminders::Reminders::load(data_dir),
+                reminders: reminders::Reminders::load(data_dir.clone()),
+                semantic: Arc::new(semantic::Semantic::load(data_dir)),
                 icon_dir: icon_dir.clone(),
             });
             app.manage(state.clone());
             reminders::start(app.handle().clone(), state.clone());
+            // Index documents for search-by-meaning in the background.
+            state.semantic.clone().start();
 
             // Load the AI model in the background so the first sentence isn't slow.
             let ai_cfg = state.ai.get();
@@ -86,6 +93,13 @@ pub fn run() {
             commands::ai_models,
             commands::get_ai_settings,
             commands::set_ai_settings,
+            commands::semantic_search,
+            commands::get_semantic_settings,
+            commands::set_semantic_settings,
+            commands::semantic_status,
+            commands::semantic_reindex,
+            commands::pick_folder,
+            commands::recent_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Spotlight");

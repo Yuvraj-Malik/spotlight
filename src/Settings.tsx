@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Alias, SearchResult } from "./types";
 import AiSettingsCard from "./components/AiSettingsCard";
+import FileSearchCard from "./components/FileSearchCard";
 
 export default function Settings() {
   const [aliases, setAliases] = useState<Alias[]>([]);
@@ -61,6 +62,7 @@ export default function Settings() {
       </header>
 
       <AiSettingsCard />
+      <FileSearchCard />
 
       <section className="card">
         <h2>Add a nickname</h2>

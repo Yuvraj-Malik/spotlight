@@ -1,4 +1,4 @@
-use crate::{ai, aliases::Alias, icons, providers, window, AppState};
+use crate::{ai, aliases::Alias, icons, providers, recent, semantic, window, AppState};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, sync::Arc};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -179,4 +179,106 @@ pub async fn ai_answer(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Files whose content matches the query's meaning (local embeddings).
+#[tauri::command]
+pub async fn semantic_search(query: String, state: State<'_, Arc<AppState>>) -> Result<Vec<SearchResult>, String> {
+    let sem = state.semantic.clone();
+    let hits = tauri::async_runtime::spawn_blocking(move || sem.search(query.trim(), 5))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(hits
+        .into_iter()
+        .map(|(path, score)| {
+            let p = std::path::Path::new(&path);
+            let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| path.clone());
+            let folder = p.parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
+            SearchResult {
+                id: format!("file:{path}"),
+                title: name,
+                subtitle: format!("✨ {}% match by meaning · {folder}", (score * 100.0).round() as i64),
+                kind: ResultKind::File,
+                target: path,
+                score: 1000 + (score * 100.0) as i64,
+            }
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn get_semantic_settings(state: State<'_, Arc<AppState>>) -> semantic::SemanticSettings {
+    state.semantic.settings()
+}
+
+#[tauri::command]
+pub fn set_semantic_settings(settings: semantic::SemanticSettings, state: State<'_, Arc<AppState>>) {
+    state.semantic.set_settings(settings);
+}
+
+#[tauri::command]
+pub fn semantic_status(state: State<'_, Arc<AppState>>) -> semantic::Status {
+    state.semantic.status()
+}
+
+#[tauri::command]
+pub fn semantic_reindex(state: State<'_, Arc<AppState>>) {
+    state.semantic.request_reindex();
+}
+
+/// Native "choose folder" dialog.
+#[tauri::command]
+pub async fn pick_folder(app: AppHandle) -> Option<String> {
+    use tauri_plugin_dialog::DialogExt;
+    tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .blocking_pick_folder()
+            .and_then(|f| f.into_path().ok())
+            .map(|p| p.to_string_lossy().to_string())
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+/// "files i changed today", "pdfs from yesterday"... Empty if the query isn't a time-based file search.
+#[tauri::command]
+pub async fn recent_files(query: String, state: State<'_, Arc<AppState>>) -> Result<Vec<SearchResult>, String> {
+    let Some(q) = recent::parse(&query) else { return Ok(vec![]) };
+    let folders = state.semantic.settings().folders;
+    let hits = tauri::async_runtime::spawn_blocking(move || {
+        let hits = recent::find(&q, &folders, 8);
+        (hits, q.label)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    let (hits, label) = hits;
+    let total = hits.len();
+    Ok(hits
+        .into_iter()
+        .enumerate()
+        .map(|(i, (path, modified))| {
+            let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let folder = path.parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
+            let path = path.to_string_lossy().to_string();
+            SearchResult {
+                id: format!("file:{path}"),
+                title: name,
+                subtitle: format!("Modified {} · {folder}", recent::when(modified)),
+                kind: ResultKind::File,
+                target: path,
+                // Keep newest first, above everything else.
+                score: 4000 - i as i64,
+            }
+        })
+        .chain((total == 0).then(|| SearchResult {
+            id: "recent:none".into(),
+            title: format!("No matching files changed {label}"),
+            subtitle: "Searched the folders set in Settings → Search files by meaning".into(),
+            kind: ResultKind::Command,
+            target: "spotlight:settings".into(),
+            score: 4000,
+        }))
+        .collect())
 }

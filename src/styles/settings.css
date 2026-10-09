@@ -58,3 +58,9 @@ html.settings-page body {
 .settings .switch input { width: 16px; height: 16px; accent-color: #4a7dff; }
 .settings .warn-badge { background: rgba(255, 140, 90, 0.18); color: #ffb48a; }
 .settings .key-row { margin-top: 12px; }
+.settings .status-line { font-size: 12px; color: #9fc0ff; margin: -4px 0 12px; }
+.settings .status-line.bad { color: #ffb48a; }
+.settings .folders { list-style: none; margin-bottom: 12px; }
+.settings .folders li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 2px; border-top: 1px solid #2e2e36; font-size: 13px; }
+.settings .folders li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings .folders li.empty { color: #8a8a96; }

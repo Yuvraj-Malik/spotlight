@@ -39,6 +39,27 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [aiResults, setAiResults] = useState<SearchResult[]>([]);
+  const [fileResults, setFileResults] = useState<SearchResult[]>([]);
+  const [recentResults, setRecentResults] = useState<SearchResult[]>([]);
+  const recentRequestId = useRef(0);
+
+  // "files i changed today", "pdfs from yesterday": instant, rule-based, no AI.
+  useEffect(() => {
+    const id = ++recentRequestId.current;
+    setRecentResults([]);
+    if (query.trim().split(/\s+/).length < 2) return;
+    const t = setTimeout(() => {
+      invoke<SearchResult[]>("recent_files", { query })
+        .then((r) => {
+          if (id !== recentRequestId.current) return;
+          setRecentResults(r);
+          if (r.length) setSelected(0);
+        })
+        .catch(() => {});
+    }, 150);
+    return () => clearTimeout(t);
+  }, [query]);
+  const fileRequestId = useRef(0);
   const [thinking, setThinking] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [answer, setAnswer] = useState<Answer | null>(null);
@@ -148,10 +169,31 @@ export default function App() {
     return () => clearTimeout(t);
   }, [query]);
 
+  // Search files by meaning (local embeddings) for any query of 2+ words.
+  useEffect(() => {
+    const id = ++fileRequestId.current;
+    setFileResults([]);
+    const words = query.trim().split(/\s+/).filter(Boolean).length;
+    if (words < 2) return;
+    const t = setTimeout(() => {
+      invoke<SearchResult[]>("semantic_search", { query })
+        .then((r) => id === fileRequestId.current && setFileResults(r))
+        .catch(() => {});
+    }, 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Order: AI action, then apps/commands, then files by meaning, then the web fallback.
   const combined = useMemo(() => {
     const seen = new Set<string>();
-    return [...aiResults, ...results].filter((r) => !seen.has(r.id) && !!seen.add(r.id));
-  }, [aiResults, results]);
+    const local = results.filter((r) => r.id !== "web");
+    const web = results.filter((r) => r.id === "web");
+    // Time-based file matches are the most specific answer, so they go first.
+    if (recentResults.length) {
+      return [...recentResults, ...web].filter((r) => !seen.has(r.id) && !!seen.add(r.id));
+    }
+    return [...aiResults, ...local, ...fileResults, ...web].filter((r) => !seen.has(r.id) && !!seen.add(r.id));
+  }, [aiResults, results, fileResults, recentResults]);
 
   // Reset and refocus each time the window is shown.
   useEffect(() => {
@@ -223,7 +265,7 @@ export default function App() {
             </div>
           )}
           {aiError && <div className="ai-status error">AI unavailable: {aiError}</div>}
-          {answer && <AnswerCard {...answer} onOpenSource={openUrl} />}
+          {answer && recentResults.length === 0 && <AnswerCard {...answer} onOpenSource={openUrl} />}
           {visible.length > 0 && (
             <ResultList results={visible} selected={selected} onHover={setSelected} onPick={run} />
           )}

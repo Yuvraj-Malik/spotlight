@@ -28,6 +28,9 @@ ureq = { version = "2", features = ["json"] }
 chrono = "0.4"
 regex = "1"
 dotenvy = "0.15"
+pdf-extract = "0.7"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 
 [target.'cfg(windows)'.dependencies]
