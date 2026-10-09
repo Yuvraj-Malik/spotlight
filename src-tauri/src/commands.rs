@@ -128,7 +128,7 @@ pub async fn ai_interpret(query: String, state: State<'_, Arc<AppState>>) -> Res
         return Ok(vec![]);
     }
     let apps = state.apps.read().clone();
-    tauri::async_runtime::spawn_blocking(move || ai::interpret(query.trim(), &cfg.model, &apps))
+    tauri::async_runtime::spawn_blocking(move || ai::interpret(query.trim(), &cfg, &apps))
         .await
         .map_err(|e| e.to_string())?
 }

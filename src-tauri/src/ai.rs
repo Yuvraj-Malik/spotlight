@@ -14,14 +14,17 @@ const OLLAMA: &str = "http://127.0.0.1:11434";
 const KEEP_ALIVE: &str = "30m";
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(default)]
 pub struct AiSettings {
     pub enabled: bool,
     pub model: String,
+    /// Optional. Lets "play X on YouTube" start the top video instead of showing search results.
+    pub youtube_api_key: String,
 }
 
 impl Default for AiSettings {
     fn default() -> Self {
-        Self { enabled: true, model: "qwen2.5:3b".into() }
+        Self { enabled: true, model: "qwen2.5:3b".into(), youtube_api_key: String::new() }
     }
 }
 
@@ -168,7 +171,7 @@ fn web_search(q: &str) -> SearchResult {
 
 /// "play lofi on spotify" -> Spotify app search (or the web player if the app isn't installed);
 /// anything else -> YouTube / YouTube Music search results.
-fn play_media(query: &str, platform: &str, apps: &[AppEntry]) -> SearchResult {
+fn play_media(query: &str, platform: &str, apps: &[AppEntry], yt_key: &str) -> SearchResult {
     let p = platform.to_lowercase();
     let q = urlencoding::encode(query);
     if p.contains("spotify") {
@@ -182,14 +185,49 @@ fn play_media(query: &str, platform: &str, apps: &[AppEntry]) -> SearchResult {
         let title = if query.is_empty() { "Open Spotify".into() } else { format!("Play “{query}” on Spotify") };
         return result(title, if has_app { "Spotify app" } else { "Spotify web" }, ResultKind::Web, target);
     }
-    if p.contains("music") {
-        let target = if query.is_empty() { "https://music.youtube.com".into() } else { format!("https://music.youtube.com/search?q={q}") };
-        let title = if query.is_empty() { "Open YouTube Music".into() } else { format!("Play “{query}” on YouTube Music") };
-        return result(title, "YouTube Music", ResultKind::Web, target);
+    let music = p.contains("music");
+    let (site, home, search) = if music {
+        ("YouTube Music", "https://music.youtube.com", format!("https://music.youtube.com/search?q={q}"))
+    } else {
+        ("YouTube", "https://www.youtube.com", format!("https://www.youtube.com/results?search_query={q}"))
+    };
+    if query.is_empty() {
+        return result(format!("Open {site}"), site, ResultKind::Web, home.into());
     }
-    let target = if query.is_empty() { "https://www.youtube.com".into() } else { format!("https://www.youtube.com/results?search_query={q}") };
-    let title = if query.is_empty() { "Open YouTube".into() } else { format!("Play “{query}” on YouTube") };
-    result(title, "YouTube", ResultKind::Web, target)
+    // With an API key: find the top video and open it directly, so it starts playing.
+    if !yt_key.trim().is_empty() {
+        if let Some((id, title)) = youtube_top_video(query, yt_key.trim()) {
+            let watch = if music {
+                format!("https://music.youtube.com/watch?v={id}")
+            } else {
+                format!("https://www.youtube.com/watch?v={id}")
+            };
+            return result(format!("Play “{title}”"), &format!("{site} · plays now"), ResultKind::Web, watch);
+        }
+    }
+    let note = if yt_key.trim().is_empty() { "search results · add a YouTube key in Settings to auto-play" } else { "search results" };
+    result(format!("Play “{query}” on {site}"), &format!("{site} · {note}"), ResultKind::Web, search)
+}
+
+/// YouTube Data API v3: top video for a query -> (video id, title).
+fn youtube_top_video(query: &str, key: &str) -> Option<(String, String)> {
+    let v: Value = ureq::get("https://www.googleapis.com/youtube/v3/search")
+        .timeout(Duration::from_secs(4))
+        .query("part", "snippet")
+        .query("type", "video")
+        .query("maxResults", "1")
+        .query("q", query)
+        .query("key", key)
+        .call()
+        .ok()?
+        .into_json()
+        .ok()?;
+    let item = v["items"].as_array()?.first()?;
+    let id = item["id"]["videoId"].as_str()?.to_string();
+    let title = item["snippet"]["title"].as_str().unwrap_or(query);
+    // The API returns HTML entities in titles.
+    let title = title.replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", "\"");
+    Some((id, title))
 }
 
 fn setting_target(name: &str) -> (&'static str, &'static str) {
@@ -215,8 +253,8 @@ fn setting_target(name: &str) -> (&'static str, &'static str) {
         .unwrap_or(("Open Settings", "ms-settings:"))
 }
 
-pub fn interpret(q: &str, model: &str, apps: &[AppEntry]) -> Result<Vec<SearchResult>, String> {
-    let it = ask(model, q)?;
+pub fn interpret(q: &str, cfg: &AiSettings, apps: &[AppEntry]) -> Result<Vec<SearchResult>, String> {
+    let it = ask(&cfg.model, q)?;
     let r = match it.action.as_str() {
         "open_app" => {
             let name = if it.app.trim().is_empty() { q } else { it.app.trim() };
@@ -241,7 +279,7 @@ pub fn interpret(q: &str, model: &str, apps: &[AppEntry]) -> Result<Vec<SearchRe
             let shown = url.trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/').to_string();
             result(format!("Open {shown}"), "Website", ResultKind::Web, url)
         }
-        "play_media" => play_media(it.query.trim(), &it.platform, apps),
+        "play_media" => play_media(it.query.trim(), &it.platform, apps, &cfg.youtube_api_key),
         "web_search" => web_search(if it.query.trim().is_empty() { q } else { it.query.trim() }),
         // The UI sees the "answer:" id and streams an inline answer instead of showing this row.
         "answer" => SearchResult {

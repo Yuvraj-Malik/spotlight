@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 interface AiSettings {
   enabled: boolean;
   model: string;
+  youtube_api_key: string;
 }
 
 export default function AiSettingsCard() {
@@ -11,6 +12,8 @@ export default function AiSettingsCard() {
   const [models, setModels] = useState<string[]>([]);
   const [status, setStatus] = useState<"checking" | "ok" | "down">("checking");
   const [saved, setSaved] = useState(false);
+  const [ytKey, setYtKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
 
   const check = () => {
     setStatus("checking");
@@ -23,7 +26,10 @@ export default function AiSettingsCard() {
   };
 
   useEffect(() => {
-    invoke<AiSettings>("get_ai_settings").then(setSettings);
+    invoke<AiSettings>("get_ai_settings").then((s) => {
+      setSettings(s);
+      setYtKey(s.youtube_api_key || "");
+    });
     check();
   }, []);
 
@@ -76,6 +82,31 @@ export default function AiSettingsCard() {
           Refresh
         </button>
       </div>
+      <div className="row key-row">
+        <span className="label">YouTube</span>
+        <input
+          type={showKey ? "text" : "password"}
+          placeholder="YouTube Data API key (optional)"
+          value={ytKey}
+          onChange={(e) => setYtKey(e.target.value)}
+          spellCheck={false}
+          autoComplete="off"
+        />
+        <button className="link" onClick={() => setShowKey((v) => !v)}>
+          {showKey ? "Hide" : "Show"}
+        </button>
+        <button
+          className="primary"
+          disabled={ytKey.trim() === (settings.youtube_api_key || "")}
+          onClick={() => update({ ...settings, youtube_api_key: ytKey.trim() })}
+        >
+          Save
+        </button>
+      </div>
+      <p className="muted small">
+        With a key, “play … on YouTube” starts the top video instead of opening search results. The key is stored
+        only on this PC.
+      </p>
       <p className="muted small">
         Small models (qwen2.5:3b) answer in about a second. Bigger ones are smarter but slower, especially if they
         don't fit in your GPU's memory.
