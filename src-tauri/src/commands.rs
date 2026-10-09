@@ -1,4 +1,4 @@
-use crate::{aliases::Alias, icons, providers, window, AppState};
+use crate::{ai, aliases::Alias, icons, providers, window, AppState};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, sync::Arc};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -70,6 +70,14 @@ pub fn execute(
             open_settings(app);
             Ok(())
         }
+        ResultKind::Command if result.target.starts_with("remind:") => {
+            // remind:<unix time>:<message>
+            let mut parts = result.target.splitn(3, ':').skip(1);
+            let at = parts.next().and_then(|t| t.parse::<i64>().ok()).ok_or("bad reminder")?;
+            let msg = parts.next().unwrap_or("Reminder").to_string();
+            state.reminders.add(at, msg);
+            Ok(())
+        }
         ResultKind::Command => providers::system::run(&result.target),
         ResultKind::Calc => Ok(()), // TODO: copy result to clipboard
     }
@@ -110,4 +118,65 @@ pub async fn get_icon(target: String, state: State<'_, Arc<AppState>>) -> Result
     Ok(tauri::async_runtime::spawn_blocking(move || icons::get(&target, &dir))
         .await
         .unwrap_or(None))
+}
+
+/// Ask the local model what a sentence means. Runs off the UI thread.
+#[tauri::command]
+pub async fn ai_interpret(query: String, state: State<'_, Arc<AppState>>) -> Result<Vec<SearchResult>, String> {
+    let cfg = state.ai.get();
+    if !cfg.enabled || query.trim().is_empty() {
+        return Ok(vec![]);
+    }
+    let apps = state.apps.read().clone();
+    tauri::async_runtime::spawn_blocking(move || ai::interpret(query.trim(), &cfg.model, &apps))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn ai_models() -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(ai::list_models)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn get_ai_settings(state: State<'_, Arc<AppState>>) -> ai::AiSettings {
+    state.ai.get()
+}
+
+#[tauri::command]
+pub fn set_ai_settings(settings: ai::AiSettings, state: State<'_, Arc<AppState>>) {
+    let warm = settings.enabled.then(|| settings.model.clone());
+    state.ai.set(settings);
+    if let Some(model) = warm {
+        std::thread::spawn(move || ai::warmup(&model));
+    }
+}
+
+/// "Snooze" on the full-screen reminder: schedule it again in `minutes`.
+#[tauri::command]
+pub fn snooze_reminder(message: String, minutes: i64, state: State<'_, Arc<AppState>>) {
+    let at = chrono::Local::now().timestamp() + minutes.max(1) * 60;
+    state.reminders.add(at, message);
+}
+
+/// Answer a question inline. Text streams to the UI through `on_chunk`.
+#[tauri::command]
+pub async fn ai_answer(
+    query: String,
+    on_chunk: tauri::ipc::Channel<String>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<Option<ai::Source>, String> {
+    let cfg = state.ai.get();
+    if !cfg.enabled {
+        return Err("AI is turned off in Settings".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        ai::answer(&cfg.model, query.trim(), |c| {
+            let _ = on_chunk.send(c.to_string());
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

@@ -15,7 +15,7 @@
         "label": "main",
         "title": "Spotlight",
         "width": 680,
-        "height": 480,
+        "height": 72,
         "center": true,
         "decorations": false,
         "transparent": true,
@@ -23,15 +23,22 @@
         "skipTaskbar": true,
         "resizable": false,
         "visible": false,
-        "shadow": false,
-        "windowEffects": { "effects": ["acrylic"] }
+        "shadow": false
       }
     ],
-    "security": { "csp": null }
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico"]
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ]
   }
 }

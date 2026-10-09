@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type { SearchResult } from "../types";
 import ResultIcon from "./ResultIcon";
 
@@ -9,13 +10,16 @@ interface Props {
 }
 
 export default function ResultList({ results, selected, onHover, onPick }: Props) {
+  // The list re-renders under a still cursor as results arrive; only treat it as a
+  // hover when the mouse actually moved, so the keyboard selection isn't hijacked.
+  const moved = useRef(false);
   return (
-    <ul className="results">
+    <ul className="results" onMouseMove={() => (moved.current = true)} onMouseLeave={() => (moved.current = false)}>
       {results.map((r, i) => (
         <li
           key={r.id}
           className={i === selected ? "active" : ""}
-          onMouseEnter={() => onHover(i)}
+          onMouseMove={() => moved.current && i !== selected && onHover(i)}
           onClick={() => onPick(r)}
         >
           <ResultIcon result={r} />

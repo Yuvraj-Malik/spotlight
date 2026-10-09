@@ -5,6 +5,8 @@ use std::process::Command;
 /// (id, title, subtitle). Settings pages open via ms-settings: URIs.
 const COMMANDS: &[(&str, &str, &str)] = &[
     ("spotlight:settings", "Spotlight Settings", "Nicknames and preferences"),
+    ("theme:dark", "Dark Mode", "Switch Windows to dark mode"),
+    ("theme:light", "Light Mode", "Switch Windows to light mode"),
     ("lock", "Lock", "Lock this PC"),
     ("sleep", "Sleep", "Put the PC to sleep"),
     ("shutdown", "Shut Down", "Turn off the PC"),
@@ -40,7 +42,29 @@ pub fn run(target: &str) -> Result<(), String> {
         "sleep" => Command::new("rundll32.exe").args(["powrprof.dll,SetSuspendState", "0,1,0"]).spawn(),
         "shutdown" => Command::new("shutdown").args(["/s", "/t", "0"]).spawn(),
         "restart" => Command::new("shutdown").args(["/r", "/t", "0"]).spawn(),
+        "theme:dark" => return set_theme(false),
+        "theme:light" => return set_theme(true),
         uri => return open::that_detached(uri).map_err(|e| e.to_string()),
     };
     r.map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Switch Windows between light and dark mode (apps + taskbar/Start).
+fn set_theme(light: bool) -> Result<(), String> {
+    let value = if light { "1" } else { "0" };
+    for name in ["AppsUseLightTheme", "SystemUsesLightTheme"] {
+        let mut cmd = Command::new("reg");
+        cmd.args([
+            "add",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            "/v", name, "/t", "REG_DWORD", "/d", value, "/f",
+        ]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // no console window flash
+        }
+        cmd.status().map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }

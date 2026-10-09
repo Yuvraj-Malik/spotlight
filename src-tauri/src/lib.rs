@@ -1,8 +1,11 @@
+mod ai;
 mod aliases;
 mod commands;
 mod icons;
 mod providers;
 mod ranking;
+mod reminders;
+mod timeparse;
 mod window;
 
 use parking_lot::RwLock;
@@ -15,6 +18,8 @@ pub struct AppState {
     pub usage: ranking::Usage,
     pub aliases: aliases::Aliases,
     pub icon_dir: std::path::PathBuf,
+    pub ai: ai::AiConfig,
+    pub reminders: reminders::Reminders,
 }
 
 pub fn run() {
@@ -23,16 +28,26 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             let icon_dir = data_dir.join("icons");
             let state = Arc::new(AppState {
                 apps: RwLock::new(Vec::new()),
                 usage: ranking::Usage::load(data_dir.clone()),
-                aliases: aliases::Aliases::load(data_dir),
+                aliases: aliases::Aliases::load(data_dir.clone()),
+                ai: ai::AiConfig::load(data_dir.clone()),
+                reminders: reminders::Reminders::load(data_dir),
                 icon_dir: icon_dir.clone(),
             });
             app.manage(state.clone());
+            reminders::start(app.handle().clone(), state.clone());
+
+            // Load the AI model in the background so the first sentence isn't slow.
+            let ai_cfg = state.ai.get();
+            if ai_cfg.enabled {
+                std::thread::spawn(move || ai::warmup(&ai_cfg.model));
+            }
 
             // Build the app index off the main thread so startup stays instant,
             // then refresh it every few minutes to pick up newly installed apps.
@@ -62,6 +77,12 @@ pub fn run() {
             commands::set_alias,
             commands::remove_alias,
             commands::get_icon,
+            commands::ai_interpret,
+            commands::ai_answer,
+            commands::snooze_reminder,
+            commands::ai_models,
+            commands::get_ai_settings,
+            commands::set_ai_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Spotlight");

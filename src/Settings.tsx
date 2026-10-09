@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Alias, SearchResult } from "./types";
+import AiSettingsCard from "./components/AiSettingsCard";
 
 export default function Settings() {
   const [aliases, setAliases] = useState<Alias[]>([]);
@@ -52,12 +53,14 @@ export default function Settings() {
   return (
     <div className="settings">
       <header>
-        <h1>Nicknames</h1>
+        <h1>Spotlight Settings</h1>
         <p>
           Give anything a short name. Spotlight also learns them on its own: pick the same result for the same
           short query 3 times and it becomes a nickname.
         </p>
       </header>
+
+      <AiSettingsCard />
 
       <section className="card">
         <h2>Add a nickname</h2>

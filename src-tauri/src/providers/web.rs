@@ -7,6 +7,6 @@ pub fn fallback(q: &str) -> SearchResult {
         subtitle: "Google".into(),
         kind: ResultKind::Web,
         target: format!("https://www.google.com/search?q={}", urlencoding::encode(q)),
-        score: i64::MIN,
+        score: -1_000_000, // lowest, but safe to round-trip through JavaScript
     }
 }

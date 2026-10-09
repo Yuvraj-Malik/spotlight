@@ -11,7 +11,7 @@ pub fn toggle(app: &AppHandle) {
     if win.is_visible().unwrap_or(false) {
         let _ = win.hide();
     } else {
-        let _ = win.center();
+        place_top_center(&win);
         let _ = win.show();
         let _ = win.set_focus();
         let _ = app.emit("spotlight://shown", ());
@@ -94,4 +94,18 @@ pub fn open_settings(app: &AppHandle) {
         .min_inner_size(560.0, 420.0)
         .center()
         .build();
+}
+
+/// Like Spotlight: horizontally centred, about a fifth of the way down the screen,
+/// so the bar stays put while results grow downward.
+fn place_top_center(win: &tauri::WebviewWindow) {
+    let monitor = win.current_monitor().ok().flatten().or_else(|| win.primary_monitor().ok().flatten());
+    let (Some(m), Ok(size)) = (monitor, win.outer_size()) else {
+        let _ = win.center();
+        return;
+    };
+    let (mpos, msize) = (m.position(), m.size());
+    let x = mpos.x + (msize.width as i32 - size.width as i32) / 2;
+    let y = mpos.y + (msize.height as f64 * 0.2) as i32;
+    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
 }
