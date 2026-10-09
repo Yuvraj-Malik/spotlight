@@ -3077,10 +3077,12 @@ dependencies = [
 name = "spotlight"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "fuzzy-matcher",
  "meval",
  "open",
  "parking_lot",
+ "png 0.17.16",
  "serde",
  "serde_json",
  "tauri",
@@ -3089,6 +3091,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "urlencoding",
  "walkdir",
+ "windows",
 ]
 
 [[package]]

@@ -1,4 +1,4 @@
-use crate::{aliases::Alias, providers, window, AppState};
+use crate::{aliases::Alias, icons, providers, window, AppState};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, sync::Arc};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -101,4 +101,13 @@ pub fn set_alias(alias: String, result: SearchResult, state: State<'_, Arc<AppSt
 #[tauri::command]
 pub fn remove_alias(alias: String, state: State<'_, Arc<AppState>>) {
     state.aliases.remove(&alias);
+}
+
+/// Icon for an app or file result as a PNG data URL (None if Windows has none).
+#[tauri::command]
+pub async fn get_icon(target: String, state: State<'_, Arc<AppState>>) -> Result<Option<String>, ()> {
+    let dir = state.icon_dir.clone();
+    Ok(tauri::async_runtime::spawn_blocking(move || icons::get(&target, &dir))
+        .await
+        .unwrap_or(None))
 }

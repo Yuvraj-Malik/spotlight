@@ -1,12 +1,5 @@
 import type { SearchResult } from "../types";
-
-const ICONS: Record<SearchResult["kind"], string> = {
-  app: "▣",
-  file: "▤",
-  calc: "=",
-  web: "◎",
-  command: "⚙",
-};
+import ResultIcon from "./ResultIcon";
 
 interface Props {
   results: SearchResult[];
@@ -25,7 +18,7 @@ export default function ResultList({ results, selected, onHover, onPick }: Props
           onMouseEnter={() => onHover(i)}
           onClick={() => onPick(r)}
         >
-          <span className="kind">{ICONS[r.kind]}</span>
+          <ResultIcon result={r} />
           <div className="text">
             <div className="title">{r.title}</div>
             <div className="subtitle">{r.subtitle}</div>

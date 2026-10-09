@@ -1,5 +1,6 @@
 mod aliases;
 mod commands;
+mod icons;
 mod providers;
 mod ranking;
 mod window;
@@ -13,6 +14,7 @@ pub struct AppState {
     pub apps: RwLock<Vec<providers::apps::AppEntry>>,
     pub usage: ranking::Usage,
     pub aliases: aliases::Aliases,
+    pub icon_dir: std::path::PathBuf,
 }
 
 pub fn run() {
@@ -23,10 +25,12 @@ pub fn run() {
         ))
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
+            let icon_dir = data_dir.join("icons");
             let state = Arc::new(AppState {
                 apps: RwLock::new(Vec::new()),
                 usage: ranking::Usage::load(data_dir.clone()),
                 aliases: aliases::Aliases::load(data_dir),
+                icon_dir: icon_dir.clone(),
             });
             app.manage(state.clone());
 
@@ -35,7 +39,12 @@ pub fn run() {
             std::thread::spawn(move || loop {
                 let apps = providers::apps::scan();
                 println!("Indexed {} apps", apps.len());
+                let targets: Vec<String> = apps.iter().map(|a| a.path.clone()).collect();
                 *state.apps.write() = apps;
+                // Warm the icon cache so results appear with icons immediately.
+                for t in targets {
+                    icons::get(&t, &icon_dir);
+                }
                 std::thread::sleep(std::time::Duration::from_secs(300));
             });
 
@@ -52,6 +61,7 @@ pub fn run() {
             commands::list_aliases,
             commands::set_alias,
             commands::remove_alias,
+            commands::get_icon,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Spotlight");
