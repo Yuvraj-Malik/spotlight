@@ -23,6 +23,9 @@ pub struct AppState {
 }
 
 pub fn run() {
+    // Load keys from the project's .env file (searched from the current folder upward).
+    let _ = dotenvy::dotenv();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,

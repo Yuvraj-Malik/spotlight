@@ -197,15 +197,20 @@ fn play_media(query: &str, platform: &str, apps: &[AppEntry], yt_key: &str) -> S
     // With an API key: find the top video and open it directly, so it starts playing.
     if !yt_key.trim().is_empty() {
         if let Some((id, title)) = youtube_top_video(query, yt_key.trim()) {
+            // Opens in your default browser and starts playing there.
             let watch = if music {
                 format!("https://music.youtube.com/watch?v={id}")
             } else {
                 format!("https://www.youtube.com/watch?v={id}")
             };
-            return result(format!("Play “{title}”"), &format!("{site} · plays now"), ResultKind::Web, watch);
+            return result(format!("Play “{title}”"), &format!("{site} · plays in your browser"), ResultKind::Web, watch);
         }
     }
-    let note = if yt_key.trim().is_empty() { "search results · add a YouTube key in Settings to auto-play" } else { "search results" };
+    let note = if yt_key.trim().is_empty() {
+        "search results · add a YouTube key in Settings to play directly"
+    } else {
+        "search results"
+    };
     result(format!("Play “{query}” on {site}"), &format!("{site} · {note}"), ResultKind::Web, search)
 }
 
@@ -253,6 +258,15 @@ fn setting_target(name: &str) -> (&'static str, &'static str) {
         .unwrap_or(("Open Settings", "ms-settings:"))
 }
 
+/// YouTube key: the one saved in Settings wins; otherwise YOUTUBE_API_KEY from the .env file.
+fn youtube_key(cfg: &AiSettings) -> String {
+    let saved = cfg.youtube_api_key.trim();
+    if !saved.is_empty() {
+        return saved.to_string();
+    }
+    std::env::var("YOUTUBE_API_KEY").unwrap_or_default().trim().to_string()
+}
+
 pub fn interpret(q: &str, cfg: &AiSettings, apps: &[AppEntry]) -> Result<Vec<SearchResult>, String> {
     let it = ask(&cfg.model, q)?;
     let r = match it.action.as_str() {
@@ -279,7 +293,7 @@ pub fn interpret(q: &str, cfg: &AiSettings, apps: &[AppEntry]) -> Result<Vec<Sea
             let shown = url.trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/').to_string();
             result(format!("Open {shown}"), "Website", ResultKind::Web, url)
         }
-        "play_media" => play_media(it.query.trim(), &it.platform, apps, &cfg.youtube_api_key),
+        "play_media" => play_media(it.query.trim(), &it.platform, apps, &youtube_key(cfg)),
         "web_search" => web_search(if it.query.trim().is_empty() { q } else { it.query.trim() }),
         // The UI sees the "answer:" id and streams an inline answer instead of showing this row.
         "answer" => SearchResult {
