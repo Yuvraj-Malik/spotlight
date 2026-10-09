@@ -30,9 +30,13 @@ pub fn run() {
             });
             app.manage(state.clone());
 
-            // Build the app index off the main thread so startup stays instant.
-            std::thread::spawn(move || {
-                *state.apps.write() = providers::apps::scan();
+            // Build the app index off the main thread so startup stays instant,
+            // then refresh it every few minutes to pick up newly installed apps.
+            std::thread::spawn(move || loop {
+                let apps = providers::apps::scan();
+                println!("Indexed {} apps", apps.len());
+                *state.apps.write() = apps;
+                std::thread::sleep(std::time::Duration::from_secs(300));
             });
 
             window::setup_hotkey(app)?;
